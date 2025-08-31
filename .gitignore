@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 env/
 .env
+static/script.js.txt

@@ -1,3 +1,5 @@
+// This is the complete content for static/script.js
+
 document.addEventListener("DOMContentLoaded", () => {
     // --- Constants ---
     const GITHUB_TOKEN_KEY = 'github_access_token';
@@ -78,7 +80,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const fetchGithubRepos = async () => {
-        // (This function remains as it was in the previous update)
         const token = localStorage.getItem(GITHUB_TOKEN_KEY);
         if (!token) return;
 
@@ -136,7 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             selectZipBtn.classList.add('active');
             selectGithubBtn.classList.remove('active');
-            zipInputs.remove('hidden');
+            zipInputs.classList.remove('hidden');
             githubInputs.classList.add('hidden');
             zipFileInput.required = true;
             repoSelect.required = false;
@@ -152,75 +153,108 @@ document.addEventListener("DOMContentLoaded", () => {
         const formData = new FormData(docForm);
         const endpoint = selectGithubBtn.classList.contains('active') ? '/process-github' : '/process-zip';
         
-        const options = { method: 'POST', body: formData };
+        const headers = new Headers();
         if (endpoint === '/process-github') {
-            options.headers = { 'Authorization': `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}` };
+            headers.append('Authorization', `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}`);
         }
+        
+        const options = { method: 'POST', body: formData, headers: headers };
 
         fetch(endpoint, options).then(response => {
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(`Server error: ${response.status} - ${errData.detail || 'Unknown error'}`);
+                });
+            }
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = ''; // Buffer for incomplete lines
+
             function push() {
                 reader.read().then(({ done, value }) => {
-                    if (done) return;
-                    decoder.decode(value, { stream: true }).split('\n\n').forEach(eventData => {
-                        if (!eventData.trim()) return;
-                        const eventLine = eventData.split('\n').find(l => l.startsWith('event: '));
-                        const dataLine = eventData.split('\n').find(l => l.startsWith('data: '));
-                        if (eventLine && dataLine) {
-                            handleStreamEvent(eventLine.substring(7), JSON.parse(dataLine.substring(6)));
+                    if (done) {
+                        // Process any remaining text in the buffer when the stream is done
+                        if (buffer) {
+                           try {
+                                const json = JSON.parse(buffer);
+                                handleStreamEvent(json.type, json.payload);
+                            } catch (e) {
+                                console.error("Error parsing final buffer chunk:", buffer, e);
+                            }
                         }
-                    });
+                        return;
+                    }
+
+                    // Append new data to buffer and process complete lines
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    
+                    // The last item in lines might be an incomplete line, so we keep it in the buffer
+                    buffer = lines.pop(); 
+                    
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
+                        try {
+                            const json = JSON.parse(line);
+                            handleStreamEvent(json.type, json.payload);
+                        } catch (e) {
+                            console.error("Failed to parse JSON line:", line, e);
+                        }
+                    }
+                    
                     push();
+                }).catch(err => {
+                    console.error("Stream reading error:", err);
+                    handleStreamEvent('error', `Stream error: ${err.message}`);
                 });
             }
             push();
-        }).catch(err => handleStreamEvent('error', `Connection failed: ${err.message}`));
+        }).catch(err => handleStreamEvent('error', `${err.message}`));
     };
 
-    const handleStreamEvent = (type, data) => {
+    const handleStreamEvent = (type, payload) => {
+        // The data is now in 'payload'
         switch (type) {
             case 'phase':
-                const phaseEl = document.getElementById(`phase-${data.id}`);
-                if (phaseEl) phaseEl.dataset.status = data.status;
+                const phaseEl = document.getElementById(`phase-${payload.id}`);
+                if (phaseEl) phaseEl.dataset.status = payload.status;
                 break;
             case 'subtask':
-                const subtaskId = sanitizeForId(data.id);
+                const subtaskId = sanitizeForId(payload.id);
                 let subtaskEl = document.getElementById(subtaskId);
-                const listEl = document.getElementById(data.listId);
+                const listEl = document.getElementById(payload.listId);
                 if (!subtaskEl && listEl) {
                     subtaskEl = document.createElement('li');
                     subtaskEl.id = subtaskId;
-                    subtaskEl.textContent = data.name;
+                    subtaskEl.textContent = payload.name;
                     listEl.appendChild(subtaskEl);
                 }
-                if (subtaskEl) subtaskEl.dataset.status = data.status;
+                if (subtaskEl) subtaskEl.dataset.status = payload.status;
                 break;
             case 'log':
-                logOutput.textContent += data.message.replace(/\\n/g, '\n') + '\n';
+                logOutput.textContent += payload.message.replace(/\\n/g, '\n') + '\n';
                 logOutput.scrollTop = logOutput.scrollHeight;
                 break;
             case 'error':
                 document.querySelectorAll('.phase-item[data-status="in-progress"]').forEach(el => el.dataset.status = 'error');
-                logOutput.textContent += `\n\n--- ERROR ---\n${data}\n`;
+                logOutput.textContent += `\n\n--- ERROR ---\n${payload}\n`;
                 submitBtn.disabled = false;
                 break;
             case 'done':
                 showView('result-section');
-                resultLink.innerHTML = `<p>${data.message}</p>`;
-                if (data.type === 'zip') {
-                    resultLink.innerHTML += `<a href="/download/${data.download_path}" class="button-link" download>Download ZIP</a>`;
-                } else if (data.url) {
-                    const linkText = data.url.includes('/pull/new/') ? 'Create Pull Request' : 'View Repository';
-                    resultLink.innerHTML += `<a href="${data.url}" target="_blank" class="button-link">${linkText}</a>`;
+                resultLink.innerHTML = `<p>${payload.message}</p>`;
+                if (payload.type === 'zip') {
+                    resultLink.innerHTML += `<a href="/download/${payload.download_path}" class="button-link" download>Download ZIP</a>`;
+                } else if (payload.url) {
+                    const linkText = payload.url.includes('/pull/new/') ? 'Create Pull Request' : 'View Repository';
+                    resultLink.innerHTML += `<a href="${payload.url}" target="_blank" class="button-link">${linkText}</a>`;
                 }
                 submitBtn.disabled = false;
                 break;
         }
     };
 
-    // --- Event Listeners ---
+    // --- Event Listeners and Initial Load ---
     githubLoginBtn.addEventListener('click', () => window.location.href = '/login/github');
     selectZipBtn.addEventListener('click', () => switchMode('zip'));
     selectGithubBtn.addEventListener('click', () => switchMode('github'));
@@ -239,6 +273,5 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     baseBranchInput.addEventListener('change', updateTreeOnInputChange);
 
-    // --- Initial Load ---
     handleAuth();
 });

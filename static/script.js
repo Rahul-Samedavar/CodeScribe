@@ -16,7 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const githubInputs = document.getElementById('github-inputs');
     const zipFileInput = document.getElementById('zip-file');
     const repoSelect = document.getElementById('repo-select');
-    const baseBranchInput = document.getElementById('base-branch-input');
+    const baseBranchSelect = document.getElementById('base-branch-select');
+    const newBranchInput = document.getElementById('new-branch-input');
+    const branchNameError = document.getElementById('branch-name-error');
     const fileTreeContainer = document.getElementById('file-tree-container');
     const fileTree = document.getElementById('file-tree');
     const liveProgressView = document.getElementById('live-progress-view');
@@ -56,6 +58,50 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // --- Core Logic ---
+    const checkBranchName = async () => {
+        const repoFullName = repoSelect.value;
+        const branchName = newBranchInput.value.trim();
+        const token = localStorage.getItem(GITHUB_TOKEN_KEY);
+
+        branchNameError.textContent = '';
+        branchNameError.style.display = 'none';
+        
+        if (!repoFullName || !branchName || !token || !selectGithubBtn.classList.contains('active')) {
+            submitBtn.disabled = false;
+            return;
+        }
+        
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Checking branch...';
+
+        try {
+            const response = await fetch(`/api/github/branch-exists?repo_full_name=${encodeURIComponent(repoFullName)}&branch_name=${encodeURIComponent(branchName)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                 const errData = await response.json();
+                 throw new Error(errData.detail || `Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.exists) {
+                branchNameError.textContent = `Branch '${branchName}' already exists. Please choose another name.`;
+                branchNameError.style.display = 'block';
+                submitBtn.disabled = true;
+            } else {
+                submitBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Error checking branch name:', error);
+            branchNameError.textContent = `Could not verify branch name. ${error.message}`;
+            branchNameError.style.display = 'block';
+            submitBtn.disabled = false; // Allow submission, server will catch it if it's a real issue.
+        } finally {
+             submitBtn.textContent = 'Generate Documentation';
+        }
+    };
+    
     const handleAuth = () => {
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
@@ -107,6 +153,37 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
+    const fetchRepoBranches = async (repoFullName, defaultBranch) => {
+        const token = localStorage.getItem(GITHUB_TOKEN_KEY);
+        if (!token || !repoFullName) return;
+
+        baseBranchSelect.innerHTML = '<option>Loading branches...</option>';
+        baseBranchSelect.disabled = true;
+
+        try {
+            const response = await fetch(`/api/github/branches?repo_full_name=${repoFullName}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Failed to fetch branches');
+            const branches = await response.json();
+            
+            baseBranchSelect.innerHTML = '';
+            branches.forEach(branchName => {
+                const option = document.createElement('option');
+                option.value = branchName;
+                option.textContent = branchName;
+                if (branchName === defaultBranch) {
+                    option.selected = true;
+                }
+                baseBranchSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error(error);
+            baseBranchSelect.innerHTML = `<option>Error loading branches</option>`;
+        } finally {
+            baseBranchSelect.disabled = false;
+        }
+    };
+
+
     const fetchAndBuildTree = async (repoFullName, branch) => {
         fileTreeContainer.classList.remove('hidden');
         fileTree.innerHTML = '<em>Loading repository file tree...</em>';
@@ -133,7 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
             zipInputs.classList.add('hidden');
             zipFileInput.required = false;
             repoSelect.required = true;
-            if (repoSelect.value) fetchAndBuildTree(repoSelect.value, baseBranchInput.value);
+            if (repoSelect.value) fetchAndBuildTree(repoSelect.value, baseBranchSelect.value);
         } else {
             selectZipBtn.classList.add('active');
             selectGithubBtn.classList.remove('active');
@@ -260,18 +337,26 @@ document.addEventListener("DOMContentLoaded", () => {
     selectGithubBtn.addEventListener('click', () => switchMode('github'));
     docForm.addEventListener('submit', handleFormSubmit);
 
-    const updateTreeOnInputChange = () => {
-        const repoFullName = repoSelect.value;
-        const branch = baseBranchInput.value;
-        if (repoFullName && branch) fetchAndBuildTree(repoFullName, branch);
-    };
-
-    repoSelect.addEventListener('change', (e) => {
+    repoSelect.addEventListener('change', async (e) => {
         const selectedOption = e.target.options[e.target.selectedIndex];
-        baseBranchInput.value = selectedOption.dataset.defaultBranch || '';
-        updateTreeOnInputChange();
+        const repoFullName = selectedOption.value;
+        const defaultBranch = selectedOption.dataset.defaultBranch || '';
+        
+        if (repoFullName) {
+            await fetchRepoBranches(repoFullName, defaultBranch);
+            fetchAndBuildTree(repoFullName, baseBranchSelect.value);
+            checkBranchName();
+        } else {
+            baseBranchSelect.innerHTML = '';
+            fileTreeContainer.classList.add('hidden');
+        }
     });
-    baseBranchInput.addEventListener('change', updateTreeOnInputChange);
+
+    baseBranchSelect.addEventListener('change', () => {
+        fetchAndBuildTree(repoSelect.value, baseBranchSelect.value);
+    });
+
+    newBranchInput.addEventListener('blur', checkBranchName);
 
     handleAuth();
 });

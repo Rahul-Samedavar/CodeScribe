@@ -31,12 +31,13 @@
                         <select id="repo-select" name="repo_full_name" required></select>
                     </div>
                     <div class="form-group">
-                        <label for="base-branch-input">Base Branch:</label>
-                        <input type="text" id="base-branch-input" name="base_branch" required>
+                        <label for="base-branch-select">Base Branch:</label>
+                        <select id="base-branch-select" name="base_branch" required></select>
                     </div>
                     <div class="form-group">
                         <label for="new-branch-input">New Branch Name:</label>
                         <input type="text" id="new-branch-input" name="new_branch_name" value="docs/codescribe-ai" required>
+                        <small id="branch-name-error" style="color: red; display: none;"></small>
                     </div>
                 </div>
 

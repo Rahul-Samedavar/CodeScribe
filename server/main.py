@@ -94,6 +94,23 @@ async def get_github_repos(request: Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch repos: {e}")
 
+@app.get("/api/github/branches")
+async def get_github_repo_branches(request: Request, repo_full_name: str):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = auth_header.split(" ")[1]
+    try:
+        g = Github(token)
+        repo = g.get_repo(repo_full_name)
+        branches = [branch.name for branch in repo.get_branches()]
+        return branches
+    except GithubException as e:
+        raise HTTPException(status_code=e.status, detail=f"GitHub API error: {e.data.get('message', 'Could not fetch branches.')}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching branches: {e}")
+
+
 @app.get("/api/github/tree")
 async def get_github_repo_tree(request: Request, repo_full_name: str, branch: str):
     auth_header = request.headers.get("Authorization")
@@ -125,6 +142,27 @@ async def get_github_repo_tree(request: Request, repo_full_name: str, branch: st
         raise HTTPException(status_code=500, detail=f"Failed to clone or process repo tree: {e}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+@app.get("/api/github/branch-exists")
+async def check_branch_exists(request: Request, repo_full_name: str, branch_name: str):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = auth_header.split(" ")[1]
+
+    try:
+        g = Github(token)
+        repo = g.get_repo(repo_full_name)
+        # The get_branch method throws a 404 GithubException if not found
+        repo.get_branch(branch=branch_name)
+        return {"exists": True}
+    except GithubException as e:
+        if e.status == 404:
+            return {"exists": False}
+        # Re-raise for other errors like permissions, repo not found, etc.
+        raise HTTPException(status_code=e.status, detail=f"GitHub API error: {e.data.get('message', 'Unknown error')}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 
 @app.post("/process-zip")
@@ -179,7 +217,7 @@ async def process_github_endpoint(request: Request,
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = auth_header.split(" ")[1]
 
-    # --- NEW: Branch Existence Check ---
+    # --- Server-side Branch Existence Check (as a fallback) ---
     try:
         g = Github(token)
         repo = g.get_repo(repo_full_name)
@@ -193,7 +231,7 @@ async def process_github_endpoint(request: Request,
         raise HTTPException(status_code=404, detail=f"Repository '{repo_full_name}' not found or token lacks permissions: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred while checking branches: {e}")
-    # --- END of new check ---
+    # --- END of check ---
 
     regex_list = [p.strip() for p in exclude_patterns.splitlines() if p.strip()]
     exclude_list = regex_list + exclude_paths
