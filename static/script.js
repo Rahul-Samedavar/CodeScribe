@@ -1,3 +1,5 @@
+// This is the complete content for static/script.js
+
 document.addEventListener("DOMContentLoaded", () => {
     // --- Constants ---
     const GITHUB_TOKEN_KEY = 'github_access_token';
@@ -78,7 +80,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const fetchGithubRepos = async () => {
-        // (This function remains as it was in the previous update)
         const token = localStorage.getItem(GITHUB_TOKEN_KEY);
         if (!token) return;
 
@@ -136,133 +137,124 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             selectZipBtn.classList.add('active');
             selectGithubBtn.classList.remove('active');
-            zipInputs.remove('hidden');
+            zipInputs.classList.remove('hidden');
             githubInputs.classList.add('hidden');
             zipFileInput.required = true;
             repoSelect.required = false;
         }
     };
     
-// In script.js
+    const handleFormSubmit = (e) => {
+        e.preventDefault();
+        resetProgressView();
+        showView('live-progress-view');
+        submitBtn.disabled = true;
 
-const handleFormSubmit = async (e) => {
-    e.preventDefault();
-    resetProgressView();
-    showView('live-progress-view');
-    submitBtn.disabled = true;
-    logOutput.textContent = 'Initializing request...\n'; // Give immediate feedback
-
-    const formData = new FormData(docForm);
-    const endpoint = selectGithubBtn.classList.contains('active') ? '/process-github' : '/process-zip';
-    
-    const options = { method: 'POST', body: formData };
-    if (endpoint === '/process-github') {
-        options.headers = { 'Authorization': `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}` };
-    }
-
-    try {
-        const response = await fetch(endpoint, options);
-
-        if (!response.ok) {
-            // Handle non-200 responses which don't start a stream
-            const errorText = await response.text();
-            throw new Error(`Server error (${response.status}): ${errorText}`);
+        const formData = new FormData(docForm);
+        const endpoint = selectGithubBtn.classList.contains('active') ? '/process-github' : '/process-zip';
+        
+        const headers = new Headers();
+        if (endpoint === '/process-github') {
+            headers.append('Authorization', `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}`);
         }
+        
+        const options = { method: 'POST', body: formData, headers: headers };
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // Process the stream until it's done
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-                // The stream finished, but might not have sent a 'done' event
-                // This is a safety break
-                break;
+        fetch(endpoint, options).then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(`Server error: ${response.status} - ${errData.detail || 'Unknown error'}`);
+                });
             }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = ''; // Buffer for incomplete lines
 
-            buffer += decoder.decode(value, { stream: true });
-            
-            // Process all complete events in the buffer
-            let boundary = buffer.indexOf('\n\n');
-            while (boundary !== -1) {
-                const eventData = buffer.substring(0, boundary);
-                buffer = buffer.substring(boundary + 2);
+            function push() {
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        // Process any remaining text in the buffer when the stream is done
+                        if (buffer) {
+                           try {
+                                const json = JSON.parse(buffer);
+                                handleStreamEvent(json.type, json.payload);
+                            } catch (e) {
+                                console.error("Error parsing final buffer chunk:", buffer, e);
+                            }
+                        }
+                        return;
+                    }
 
-                if (eventData.trim()) {
-                    const eventLine = eventData.split('\n').find(l => l.startsWith('event: '));
-                    const dataLine = eventData.split('\n').find(l => l.startsWith('data: '));
-
-                    if (eventLine && dataLine) {
-                        const eventType = eventLine.substring(7).trim();
-                        const dataPayload = dataLine.substring(6).trim();
+                    // Append new data to buffer and process complete lines
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    
+                    // The last item in lines might be an incomplete line, so we keep it in the buffer
+                    buffer = lines.pop(); 
+                    
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
                         try {
-                            const jsonData = JSON.parse(dataPayload);
-                            handleStreamEvent(eventType, jsonData);
-                        } catch (jsonError) {
-                            console.error('Failed to parse JSON from stream:', dataPayload, jsonError);
-                            handleStreamEvent('log', { message: `[WARNING] Received malformed data from server.` });
+                            const json = JSON.parse(line);
+                            handleStreamEvent(json.type, json.payload);
+                        } catch (e) {
+                            console.error("Failed to parse JSON line:", line, e);
                         }
                     }
-                }
-                boundary = buffer.indexOf('\n\n');
+                    
+                    push();
+                }).catch(err => {
+                    console.error("Stream reading error:", err);
+                    handleStreamEvent('error', `Stream error: ${err.message}`);
+                });
             }
-        }
-        // Check if a final "done" event wasn't sent, which can happen on abrupt closes
-        const finalPhase = document.querySelector('#phase-output[data-status="success"]');
-        if (!resultSection.classList.contains('hidden') || !finalPhase) {
-             // If we are already on result screen, or the final phase never completed, show a generic message
-        }
+            push();
+        }).catch(err => handleStreamEvent('error', `${err.message}`));
+    };
 
-    } catch (err) {
-        console.error('An error occurred during the fetch operation:', err);
-        handleStreamEvent('error', `A critical error occurred: ${err.message}`);
-    }
-};
-
-    const handleStreamEvent = (type, data) => {
+    const handleStreamEvent = (type, payload) => {
+        // The data is now in 'payload'
         switch (type) {
             case 'phase':
-                const phaseEl = document.getElementById(`phase-${data.id}`);
-                if (phaseEl) phaseEl.dataset.status = data.status;
+                const phaseEl = document.getElementById(`phase-${payload.id}`);
+                if (phaseEl) phaseEl.dataset.status = payload.status;
                 break;
             case 'subtask':
-                const subtaskId = sanitizeForId(data.id);
+                const subtaskId = sanitizeForId(payload.id);
                 let subtaskEl = document.getElementById(subtaskId);
-                const listEl = document.getElementById(data.listId);
+                const listEl = document.getElementById(payload.listId);
                 if (!subtaskEl && listEl) {
                     subtaskEl = document.createElement('li');
                     subtaskEl.id = subtaskId;
-                    subtaskEl.textContent = data.name;
+                    subtaskEl.textContent = payload.name;
                     listEl.appendChild(subtaskEl);
                 }
-                if (subtaskEl) subtaskEl.dataset.status = data.status;
+                if (subtaskEl) subtaskEl.dataset.status = payload.status;
                 break;
             case 'log':
-                logOutput.textContent += data.message.replace(/\\n/g, '\n') + '\n';
+                logOutput.textContent += payload.message.replace(/\\n/g, '\n') + '\n';
                 logOutput.scrollTop = logOutput.scrollHeight;
                 break;
             case 'error':
                 document.querySelectorAll('.phase-item[data-status="in-progress"]').forEach(el => el.dataset.status = 'error');
-                logOutput.textContent += `\n\n--- ERROR ---\n${data}\n`;
+                logOutput.textContent += `\n\n--- ERROR ---\n${payload}\n`;
                 submitBtn.disabled = false;
                 break;
             case 'done':
                 showView('result-section');
-                resultLink.innerHTML = `<p>${data.message}</p>`;
-                if (data.type === 'zip') {
-                    resultLink.innerHTML += `<a href="/download/${data.download_path}" class="button-link" download>Download ZIP</a>`;
-                } else if (data.url) {
-                    const linkText = data.url.includes('/pull/new/') ? 'Create Pull Request' : 'View Repository';
-                    resultLink.innerHTML += `<a href="${data.url}" target="_blank" class="button-link">${linkText}</a>`;
+                resultLink.innerHTML = `<p>${payload.message}</p>`;
+                if (payload.type === 'zip') {
+                    resultLink.innerHTML += `<a href="/download/${payload.download_path}" class="button-link" download>Download ZIP</a>`;
+                } else if (payload.url) {
+                    const linkText = payload.url.includes('/pull/new/') ? 'Create Pull Request' : 'View Repository';
+                    resultLink.innerHTML += `<a href="${payload.url}" target="_blank" class="button-link">${linkText}</a>`;
                 }
                 submitBtn.disabled = false;
                 break;
         }
     };
 
-    // --- Event Listeners ---
+    // --- Event Listeners and Initial Load ---
     githubLoginBtn.addEventListener('click', () => window.location.href = '/login/github');
     selectZipBtn.addEventListener('click', () => switchMode('zip'));
     selectGithubBtn.addEventListener('click', () => switchMode('github'));
@@ -281,6 +273,5 @@ const handleFormSubmit = async (e) => {
     });
     baseBranchInput.addEventListener('change', updateTreeOnInputChange);
 
-    // --- Initial Load ---
     handleAuth();
 });

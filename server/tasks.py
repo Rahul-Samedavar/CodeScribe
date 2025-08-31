@@ -16,9 +16,8 @@ from codescribe.llm_handler import LLMHandler
 from codescribe.orchestrator import DocstringOrchestrator
 from codescribe.readme_generator import ReadmeGenerator
 
-async def stream_message(event: str, data: any) -> str:
-    """Formats a message for Server-Sent Events (SSE)."""
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+# REMOVED the old SSE-specific formatting function.
+# The new formatting is done directly in the generator.
 
 async def process_project(
     project_path: Path,
@@ -120,15 +119,13 @@ async def process_project(
                 # --- ZIP Creation Logic ---
                 emit_event("subtask", {"parentId": "output", "listId": "output-step-list", "id": "zip-create", "name": "Creating downloadable ZIP file...", "status": "in-progress"})
                 
-                # Create the zip in the system's temp dir so it can be served
                 temp_dir = tempfile.gettempdir()
                 zip_filename_base = f"codescribe-docs-{Path(project_path).name}"
                 zip_path_base = Path(temp_dir) / zip_filename_base
                 
-                # shutil.make_archive returns the full path
                 zip_full_path = shutil.make_archive(str(zip_path_base), 'zip', project_path)
                 
-                zip_file_name = Path(zip_full_path).name # Just the filename.zip
+                zip_file_name = Path(zip_full_path).name
                 
                 emit_event("subtask", {"parentId": "output", "id": "zip-create", "status": "success"})
                 emit_event("done", {"type": "zip", "download_path": zip_file_name, "message": "✅ Your documented project is ready for download."})
@@ -142,19 +139,24 @@ async def process_project(
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
     # --- Async Runner ---
-    # Start the blocking process in a background thread
     main_task = loop.run_in_executor(None, _blocking_process)
     
-    # Yield events from the queue as they arrive
+    # --- THIS IS THE NEW STREAMING LOGIC ---
     while True:
         message = await queue.get()
         if message is None: # The 'None' signal means the thread is finished
             break
-        yield await stream_message(message["event"], message["data"])
+        
+        # Create a single JSON object with a 'type' (the old 'event') and a 'payload' (the old 'data')
+        json_line = json.dumps({
+            "type": message["event"],
+            "payload": message["data"]
+        })
+        
+        # Yield the JSON string followed by a newline. This is the ndjson format.
+        yield f"{json_line}\n"
 
-    # Await the background task to ensure it's finished and to propagate any unhandled exceptions
     await main_task
     
-    # Clean up the temporary directory
     if is_temp and project_path and project_path.exists():
         shutil.rmtree(project_path, ignore_errors=True)

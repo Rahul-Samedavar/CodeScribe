@@ -8,10 +8,11 @@ from pathlib import Path
 import requests
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse # Import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from sse_starlette.sse import EventSourceResponse
+# EventSourceResponse is no longer needed
+# from sse_starlette.sse import EventSourceResponse 
 
 from typing import List
 from git import Repo
@@ -45,6 +46,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ... (all GET endpoints remain the same) ...
 
 @app.get("/")
 async def read_root():
@@ -143,26 +146,24 @@ async def process_zip_endpoint(
     with zipfile.ZipFile(zip_location, 'r') as zip_ref:
         zip_ref.extractall(project_path)
     os.remove(zip_location)
-
-    # --- THIS IS THE FIX ---
-    # Define headers to prevent buffering
-    sse_headers = {
-        "Content-Type": "text/event-stream",
+    
+    stream_headers = {
+        "Content-Type": "text/plain", # Changed from event-stream
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",  # Important for Nginx proxy
+        "X-Accel-Buffering": "no",
     }
 
-    return EventSourceResponse(
+    return StreamingResponse(
         process_project(
             project_path=project_path,
             description=description,
             readme_note=readme_note,
             is_temp=True,
             exclude_list=exclude_list,
-            original_filename=zip_file.filename
         ),
-        headers=sse_headers # Pass the headers here
+        headers=stream_headers,
+        media_type="text/plain"
     )
 
 @app.post("/process-github")
@@ -189,16 +190,14 @@ async def process_github_endpoint(request: Request,
     
     Repo.clone_from(repo_url, project_path, branch=base_branch)
 
-    # --- THIS IS THE FIX ---
-    # Define headers to prevent buffering
-    sse_headers = {
-        "Content-Type": "text/event-stream",
+    stream_headers = {
+        "Content-Type": "text/plain", # Changed from event-stream
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",  # Important for Nginx proxy
+        "X-Accel-Buffering": "no",
     }
 
-    return EventSourceResponse(
+    return StreamingResponse(
         process_project(
             project_path=project_path,
             description=description,
@@ -209,7 +208,8 @@ async def process_github_endpoint(request: Request,
             github_token=token,
             exclude_list=exclude_list,
         ),
-        headers=sse_headers # Pass the headers here
+        headers=stream_headers,
+        media_type="text/plain"
     )
 
 @app.get("/download/{file_path}")
