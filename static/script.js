@@ -143,41 +143,83 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
     
-    const handleFormSubmit = (e) => {
-        e.preventDefault();
-        resetProgressView();
-        showView('live-progress-view');
-        submitBtn.disabled = true;
+// In script.js
 
-        const formData = new FormData(docForm);
-        const endpoint = selectGithubBtn.classList.contains('active') ? '/process-github' : '/process-zip';
-        
-        const options = { method: 'POST', body: formData };
-        if (endpoint === '/process-github') {
-            options.headers = { 'Authorization': `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}` };
+const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    resetProgressView();
+    showView('live-progress-view');
+    submitBtn.disabled = true;
+    logOutput.textContent = 'Initializing request...\n'; // Give immediate feedback
+
+    const formData = new FormData(docForm);
+    const endpoint = selectGithubBtn.classList.contains('active') ? '/process-github' : '/process-zip';
+    
+    const options = { method: 'POST', body: formData };
+    if (endpoint === '/process-github') {
+        options.headers = { 'Authorization': `Bearer ${localStorage.getItem(GITHUB_TOKEN_KEY)}` };
+    }
+
+    try {
+        const response = await fetch(endpoint, options);
+
+        if (!response.ok) {
+            // Handle non-200 responses which don't start a stream
+            const errorText = await response.text();
+            throw new Error(`Server error (${response.status}): ${errorText}`);
         }
 
-        fetch(endpoint, options).then(response => {
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            function push() {
-                reader.read().then(({ done, value }) => {
-                    if (done) return;
-                    decoder.decode(value, { stream: true }).split('\n\n').forEach(eventData => {
-                        if (!eventData.trim()) return;
-                        const eventLine = eventData.split('\n').find(l => l.startsWith('event: '));
-                        const dataLine = eventData.split('\n').find(l => l.startsWith('data: '));
-                        if (eventLine && dataLine) {
-                            handleStreamEvent(eventLine.substring(7), JSON.parse(dataLine.substring(6)));
-                        }
-                    });
-                    push();
-                });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Process the stream until it's done
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                // The stream finished, but might not have sent a 'done' event
+                // This is a safety break
+                break;
             }
-            push();
-        }).catch(err => handleStreamEvent('error', `Connection failed: ${err.message}`));
-    };
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process all complete events in the buffer
+            let boundary = buffer.indexOf('\n\n');
+            while (boundary !== -1) {
+                const eventData = buffer.substring(0, boundary);
+                buffer = buffer.substring(boundary + 2);
+
+                if (eventData.trim()) {
+                    const eventLine = eventData.split('\n').find(l => l.startsWith('event: '));
+                    const dataLine = eventData.split('\n').find(l => l.startsWith('data: '));
+
+                    if (eventLine && dataLine) {
+                        const eventType = eventLine.substring(7).trim();
+                        const dataPayload = dataLine.substring(6).trim();
+                        try {
+                            const jsonData = JSON.parse(dataPayload);
+                            handleStreamEvent(eventType, jsonData);
+                        } catch (jsonError) {
+                            console.error('Failed to parse JSON from stream:', dataPayload, jsonError);
+                            handleStreamEvent('log', { message: `[WARNING] Received malformed data from server.` });
+                        }
+                    }
+                }
+                boundary = buffer.indexOf('\n\n');
+            }
+        }
+        // Check if a final "done" event wasn't sent, which can happen on abrupt closes
+        const finalPhase = document.querySelector('#phase-output[data-status="success"]');
+        if (!resultSection.classList.contains('hidden') || !finalPhase) {
+             // If we are already on result screen, or the final phase never completed, show a generic message
+        }
+
+    } catch (err) {
+        console.error('An error occurred during the fetch operation:', err);
+        handleStreamEvent('error', `A critical error occurred: ${err.message}`);
+    }
+};
 
     const handleStreamEvent = (type, data) => {
         switch (type) {

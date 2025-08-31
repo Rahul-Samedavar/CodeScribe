@@ -1,3 +1,4 @@
+# START OF FILE main.py
 
 import os
 import tempfile
@@ -9,7 +10,6 @@ import requests
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-# NEW: Import CORSMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
@@ -29,7 +29,6 @@ GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
 app = FastAPI()
 
-# NEW: Add CORS middleware configuration
 origins = [
     "http://localhost",
     "http://localhost:8000",
@@ -41,12 +40,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allows all headers, including Authorization
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-
-# Mount the static directory to serve HTML, CSS, JS
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
@@ -61,42 +58,26 @@ async def login_github():
     )
 
 @app.get("/auth/github/callback")
-async def auth_github_callback(code: str, request: Request): # Add request parameter
+async def auth_github_callback(code: str, request: Request):
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "client_secret": GITHUB_CLIENT_SECRET,
         "code": code,
     }
     headers = {"Accept": "application/json"}
-    
-    # Base URL for redirects, defaulting to root.
     base_url = str(request.base_url)
-
     try:
         response = requests.post("https://github.com/login/oauth/access_token", params=params, headers=headers)
-        response.raise_for_status() # This will raise an exception for 4xx/5xx responses
-        
+        response.raise_for_status()
         response_json = response.json()
-        
-        # Check for errors from GitHub, like a used code
         if "error" in response_json:
             error_description = response_json.get("error_description", "Unknown error.")
-            # Redirect to the home page with an error message
-            # The frontend can optionally display this to the user.
             return RedirectResponse(f"{base_url}?error={error_description}")
-
         token = response_json.get("access_token")
-
-        # Explicitly check if the token is valid before redirecting
         if not token:
-            # If for some reason we didn't get a token and no error, handle it.
             return RedirectResponse(f"{base_url}?error=Authentication failed, no token received.")
-
-        # Success! Redirect user back to the frontend with the real token.
         return RedirectResponse(f"{base_url}?token={token}")
-
     except requests.exceptions.RequestException as e:
-        # Handle network errors or non-200 responses
         return RedirectResponse(f"{base_url}?error=Failed to connect to GitHub: {e}")
 
 @app.get("/api/github/repos")
@@ -105,7 +86,6 @@ async def get_github_repos(request: Request):
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = auth_header.split(" ")[1]
-    
     try:
         g = Github(token)
         user = g.get_user()
@@ -114,49 +94,33 @@ async def get_github_repos(request: Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch repos: {e}")
 
-
 @app.get("/api/github/tree")
 async def get_github_repo_tree(request: Request, repo_full_name: str, branch: str):
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = auth_header.split(" ")[1]
-
     temp_dir = tempfile.mkdtemp(prefix="codescribe-tree-")
     try:
         repo_url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
-        # We only need the metadata, so a shallow clone is much faster.
         Repo.clone_from(repo_url, temp_dir, branch=branch, depth=1)
-        
         repo_path = Path(temp_dir)
         tree = []
         for root, dirs, files in os.walk(repo_path):
-            # Ignore .git directory
             if '.git' in dirs:
                 dirs.remove('.git')
-
-            # Create a nested structure
             current_level = tree
             rel_path = Path(root).relative_to(repo_path)
-            
             if str(rel_path) != ".":
                 for part in rel_path.parts:
-                    # Find the parent node
                     parent = next((item for item in current_level if item['name'] == part), None)
-                    if not parent: # Should not happen if os.walk works as expected
-                        break
+                    if not parent: break
                     current_level = parent.get('children', [])
-            
-            # Add directories
             for d in sorted(dirs):
                 current_level.append({'name': d, 'children': []})
-            
-            # Add files
             for f in sorted(files):
                 current_level.append({'name': f})
-        
         return tree
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clone or process repo tree: {e}")
     finally:
@@ -169,7 +133,6 @@ async def process_zip_endpoint(
     zip_file: UploadFile = File(...),
     exclude_patterns: str = Form("")
 ):
-    # The zip workflow can't use a file tree, so it only gets regex.
     exclude_list = [p.strip() for p in exclude_patterns.splitlines() if p.strip()]
     temp_dir = tempfile.mkdtemp(prefix="codescribe-zip-")
     project_path = Path(temp_dir)
@@ -177,21 +140,29 @@ async def process_zip_endpoint(
 
     with open(zip_location, "wb+") as f:
         shutil.copyfileobj(zip_file.file, f)
-
     with zipfile.ZipFile(zip_location, 'r') as zip_ref:
         zip_ref.extractall(project_path)
-    
     os.remove(zip_location)
 
-    # Now we stream the processing
+    # --- THIS IS THE FIX ---
+    # Define headers to prevent buffering
+    sse_headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # Important for Nginx proxy
+    }
+
     return EventSourceResponse(
         process_project(
             project_path=project_path,
             description=description,
             readme_note=readme_note,
             is_temp=True,
-            exclude_list=exclude_list
-        )
+            exclude_list=exclude_list,
+            original_filename=zip_file.filename
+        ),
+        headers=sse_headers # Pass the headers here
     )
 
 @app.post("/process-github")
@@ -202,7 +173,7 @@ async def process_github_endpoint(request: Request,
     description: str = Form(...),
     readme_note: str = Form(""),
     exclude_patterns: str = Form(""),
-    exclude_paths: List[str] = Form([]) # This captures the checkboxes
+    exclude_paths: List[str] = Form([])
 ):
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -212,15 +183,21 @@ async def process_github_endpoint(request: Request,
     regex_list = [p.strip() for p in exclude_patterns.splitlines() if p.strip()]
     exclude_list = regex_list + exclude_paths
 
-    # Clone the repo
     temp_dir = tempfile.mkdtemp(prefix="codescribe-git-")
     project_path = Path(temp_dir)
     repo_url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
     
-    from git import Repo
     Repo.clone_from(repo_url, project_path, branch=base_branch)
 
-    # Stream the processing
+    # --- THIS IS THE FIX ---
+    # Define headers to prevent buffering
+    sse_headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # Important for Nginx proxy
+    }
+
     return EventSourceResponse(
         process_project(
             project_path=project_path,
@@ -231,7 +208,8 @@ async def process_github_endpoint(request: Request,
             repo_full_name=repo_full_name,
             github_token=token,
             exclude_list=exclude_list,
-        )
+        ),
+        headers=sse_headers # Pass the headers here
     )
 
 @app.get("/download/{file_path}")

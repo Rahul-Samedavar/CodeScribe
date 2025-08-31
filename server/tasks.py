@@ -66,7 +66,8 @@ async def process_project(
                 exclude=exclude_list,
                 llm_handler=llm_handler,
                 user_note=readme_note,
-                progress_callback=emit_event
+                progress_callback=emit_event,
+                repo_full_name=repo_full_name
             )
             readme_gen.project_path = project_path
             readme_gen.is_temp_dir = False

@@ -125,7 +125,7 @@ def no_op_callback(event: str, data: dict):
     pass
 
 class ReadmeGenerator:
-    def __init__(self, path_or_url: str, description: str, exclude: List[str], llm_handler: LLMHandler, user_note: str = "", progress_callback: Callable[[str, dict], None] = no_op_callback):
+    def __init__(self, path_or_url: str, description: str, exclude: List[str], llm_handler: LLMHandler, user_note: str = "", repo_full_name="", progress_callback: Callable[[str, dict], None] = no_op_callback):
         self.path_or_url = path_or_url
         self.description = description
         # Also exclude README.md from being summarized as a file
@@ -135,6 +135,7 @@ class ReadmeGenerator:
         self.progress_callback = progress_callback
         self.project_path = None
         self.is_temp_dir = path_or_url.startswith("http")
+        self.repo_full_name  = repo_full_name
         
         # --- NEW: Bridge the LLM Handler's logging just like in the orchestrator ---
         def llm_log_wrapper(message: str):
@@ -254,7 +255,7 @@ class ReadmeGenerator:
 
         if is_root:
             template = UPDATE_ROOT_PROMPT_TEMPLATE if existing_readme else ROOT_PROMPT_TEMPLATE
-            args = {**common_args, "project_name": self.project_path.name}
+            args = {**common_args, "project_name": self.repo_full_name if self.repo_full_name else self.project_path.name}
             if existing_readme: args["existing_readme"] = existing_readme
         else: # is subdirectory
             template = UPDATE_SUBDIR_PROMPT_TEMPLATE if existing_readme else SUBDIR_PROMPT_TEMPLATE
