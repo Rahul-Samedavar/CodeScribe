@@ -1,137 +1,183 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeScribe AI</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CodeScribe AI</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <meta name="color-scheme" content="dark light"/>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>CodeScribe AI 🤖</h1>
-            <p>AI-powered project documentation, now in your browser.</p>
-        </header>
+   <!-- Decorative Background  -->
+  <div class="bg">
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  </div>
 
-        <div id="auth-section">
-            <button id="github-login-btn">Login with GitHub</button>
+  <main class="shell">
+    <div class="container glass-card" data-animate>
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span class="dot dot-1"></span>
+            <span class="dot dot-2"></span>
+            <span class="dot dot-3"></span>
+          </div>
+          <h1 class="title text-gradient">CodeScribe AI</h1>
+        </div>
+        <p class="subtitle">AI-powered project documentation, right in your browser.</p>
+      </header>
+
+       Auth 
+      <section id="auth-section" class="panel" data-animate>
+        <button id="github-login-btn" class="btn btn-primary btn-glow" aria-label="Login with GitHub">
+          <span class="btn-inner">
+            <svg class="icon" width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .198a8 8 0 0 0-2.53 15.6c.4.073.547-.173.547-.385v-1.35c-2.226.483-2.695-1.073-2.695-1.073c-.364-.925-.89-1.172-.89-1.172c-.727-.497.055-.487.055-.487c.803.056 1.225.825 1.225.825c.715 1.224 1.874.87 2.33.665c.073-.518.28-.871.508-1.072C4.9 9.83 3 9.232 3 6.58c0-.87.31-1.58.824-2.136c-.083-.203-.357-1.02.078-2.127c0 0 .673-.215 2.206.817c.64-.18 1.325-.27 2.006-.273c.68.003 1.365.093 2.006.273c1.532-1.032 2.204-.817 2.204-.817c.437 1.107.163 1.924.08 2.127C12.69 5 13 5.71 13 6.58c0 2.66-1.902 3.248-3.714 3.419c.287.247.543.736.543 1.484v2.2c0 .214.145.462.55.384A8 8 0 0 0 8 .198"/></svg>
+            <span>Login with GitHub</span>
+          </span>
+        </button>
+      </section>
+
+       Main Content 
+      <section id="main-content" class="hidden" data-animate>
+         Tabs 
+        <div class="tabs">
+          <button id="select-zip-btn" class="tab-btn active" type="button">
+            <span>Upload Zip</span>
+          </button>
+          <button id="select-github-btn" class="tab-btn" type="button">
+            <span>Use GitHub Repo</span>
+          </button>
+          <span class="tab-indicator" aria-hidden="true"></span>
         </div>
 
-        <div id="main-content" class="hidden">
-            <div class="input-selection">
-                <button id="select-zip-btn" class="tab-btn active">Upload Zip</button>
-                <button id="select-github-btn" class="tab-btn">Use GitHub Repo</button>
+         Form 
+        <form id="doc-form" class="form">
+           GitHub Inputs 
+          <div id="github-inputs" class="panel">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="repo-select">Select a Repository</label>
+                <select id="repo-select" name="repo_full_name" required></select>
+              </div>
+              <div class="form-group">
+                <label for="base-branch-select">Base Branch</label>
+                <select id="base-branch-select" name="base_branch" required></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="new-branch-input">New Branch Name</label>
+              <input id="new-branch-input" type="text" name="new_branch_name" value="docs/codescribe-ai" required/>
+              <small id="branch-name-error" class="form-error" aria-live="polite" style="display:none;"></small>
+            </div>
+          </div>
+
+           ZIP Inputs 
+          <div id="zip-inputs" class="panel hidden">
+            <div class="form-group">
+              <label for="zip-file">Upload Project as .zip</label>
+              <input id="zip-file" type="file" name="zip_file" accept=".zip" required/>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+           Common Inputs 
+          <div class="panel">
+            <div class="form-group">
+              <label for="description">Short Project Description</label>
+              <textarea id="description" name="description" rows="3" required placeholder="e.g., A Python library for advanced data analysis and visualization."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="readme-note">Note for README (Optional)</label>
+              <textarea id="readme-note" name="readme_note" rows="2" placeholder="e.g., Emphasize the new data processing pipeline. Mention the v2.0 release."></textarea>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="panel">
+            <div class="form-group">
+              <label for="exclude-patterns">Exclude (Regex Patterns)</label>
+              <textarea id="exclude-patterns" name="exclude_patterns" rows="2" placeholder="e.g., tests/.*, .*/migrations/.*, specific_file.py"></textarea>
+              <small>One regex pattern per line. Matches relative paths like 'src/utils/helpers.py'.</small>
             </div>
 
-            <form id="doc-form">
-                <!-- GitHub Input Section -->
-                <div id="github-inputs">
-                    <div class="form-group">
-                        <label for="repo-select">Select a Repository:</label>
-                        <select id="repo-select" name="repo_full_name" required></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="base-branch-select">Base Branch:</label>
-                        <select id="base-branch-select" name="base_branch" required></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="new-branch-input">New Branch Name:</label>
-                        <input type="text" id="new-branch-input" name="new_branch_name" value="docs/codescribe-ai" required>
-                        <small id="branch-name-error" style="color: red; display: none;"></small>
-                    </div>
-                </div>
-
-                <!-- ZIP Input Section -->
-                <div id="zip-inputs" class="hidden">
-                    <div class="form-group">
-                        <label for="zip-file">Upload Project as .zip:</label>
-                        <input type="file" id="zip-file" name="zip_file" accept=".zip" required>
-                    </div>
-                </div>
-                
-                <hr>
-
-                <!-- Common Inputs -->
-                <div class="form-group">
-                    <label for="description">Short Project Description:</label>
-                    <textarea id="description" name="description" rows="3" required placeholder="e.g., A Python library for advanced data analysis and visualization."></textarea>
-                </div>
-                 <div class="form-group">
-                    <label for="readme-note">Note for README (Optional):</label>
-                    <textarea id="readme-note" name="readme_note" rows="2" placeholder="e.g., Emphasize the new data processing pipeline. Mention the v2.0 release."></textarea>
-                </div>
-
-                <hr>
-                
-                <div class="form-group">
-                    <label for="exclude-patterns">Exclude (Regex Patterns):</label>
-                    <textarea id="exclude-patterns" name="exclude_patterns" rows="2" placeholder="e.g., tests/.*, .*/migrations/.*, specific_file.py"></textarea>
-                    <small>One regex pattern per line. Matches relative paths like 'src/utils/helpers.py'.</small>
-                </div>
-                
-                <!-- This will be populated by JS for GitHub repos -->
-                <div id="file-tree-container" class="form-group hidden">
-                    <label>Exclude Specific Files/Folders:</label>
-                    <div id="file-tree"></div>
-                </div>
-                
-                <button type="submit" id="submit-btn">Generate Documentation</button>
-            </form>
-        </div>
-        
-        <div id="live-progress-view" class="hidden">
-            <h2>Processing Your Project...</h2>
-            <div class="progress-container">
-                <!-- Main Phases Column -->
-                <ul id="phase-list" class="phase-list">
-                    <li id="phase-scan" class="phase-item" data-status="pending">
-                        <span class="status-icon"></span>
-                        <div class="phase-details">
-                            <span class="phase-title">1. Scan Project Files</span>
-                            <ul class="subtask-list" id="scan-file-list"></ul>
-                        </div>
-                    </li>
-                    <li id="phase-docstrings" class="phase-item" data-status="pending">
-                        <span class="status-icon"></span>
-                        <div class="phase-details">
-                            <span class="phase-title">2. Generate Docstrings</span>
-                            <!-- This list is for functions/classes -->
-                            <ul class="subtask-list" id="docstring-file-list"></ul>
-                            <!-- NEW list for module summaries -->
-                            <ul class="subtask-list" id="docstring-module-list"></ul>
-                            <!-- NEW list for package summaries -->
-                            <ul class="subtask-list" id="docstring-package-list"></ul>
-                        </div>
-                    </li>
-                    <li id="phase-readmes" class="phase-item" data-status="pending">
-                        <span class="status-icon"></span>
-                        <div class="phase-details">
-                            <span class="phase-title">3. Generate READMEs</span>
-                            <ul class="subtask-list" id="readme-dir-list"></ul>
-                        </div>
-                    </li>
-                    <li id="phase-output" class="phase-item" data-status="pending">
-                        <span class="status-icon"></span>
-                        <div class="phase-details">
-                            <span class="phase-title">4. Finalize and Push</span>
-                            <ul class="subtask-list" id="output-step-list"></ul>
-                        </div>
-                    </li>
-                </ul>
-                <!-- Raw Log Column -->
-                <div id="raw-log-container">
-                    <h4>Live Log Details</h4>
-                    <pre id="log-output"></pre>
-                </div>
+            <div id="file-tree-container" class="form-group hidden">
+              <label>Exclude Specific Files/Folders</label>
+              <div id="file-tree" class="tree"></div>
             </div>
-        </div>
+          </div>
 
-        <div id="result-section" class="hidden">
-            <h2>Complete!</h2>
-            <div id="result-link"></div>
-        </div>
+          <div class="form-actions">
+            <button id="submit-btn" type="submit" class="btn btn-primary btn-glow">
+              <span class="btn-inner">
+                <span class="loader" aria-hidden="true"></span>
+                <span>Generate Documentation</span>
+              </span>
+            </button>
+          </div>
+        </form>
+      </section>
 
+       <!-- Live Progress  -->
+      <section id="live-progress-view" class="hidden" data-animate>
+        <h2 class="section-title">Processing Your Project...</h2>
+        <div class="progress-layout">
+          <ul id="phase-list" class="timeline">
+            <li id="phase-scan" class="phase-item" data-status="pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <div class="phase-details">
+                <span class="phase-title">1. Scan Project Files</span>
+                <ul class="subtask-list" id="scan-file-list"></ul>
+              </div>
+            </li>
+            <li id="phase-docstrings" class="phase-item" data-status="pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <div class="phase-details">
+                <span class="phase-title">2. Generate Docstrings</span>
+                <ul class="subtask-list" id="docstring-file-list"></ul>
+                <ul class="subtask-list" id="docstring-module-list"></ul>
+                <ul class="subtask-list" id="docstring-package-list"></ul>
+              </div>
+            </li>
+            <li id="phase-readmes" class="phase-item" data-status="pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <div class="phase-details">
+                <span class="phase-title">3. Generate READMEs</span>
+                <ul class="subtask-list" id="readme-dir-list"></ul>
+              </div>
+            </li>
+            <li id="phase-output" class="phase-item" data-status="pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <div class="phase-details">
+                <span class="phase-title">4. Finalize and Push</span>
+                <ul class="subtask-list" id="output-step-list"></ul>
+              </div>
+            </li>
+          </ul>
+
+          <div id="raw-log-container" class="terminal">
+            <div class="terminal-head">
+              <span class="dot red" aria-hidden="true"></span>
+              <span class="dot yellow" aria-hidden="true"></span>
+              <span class="dot green" aria-hidden="true"></span>
+              <h4>Live Log Details</h4>
+            </div>
+            <pre id="log-output" class="terminal-body" aria-live="polite"></pre>
+          </div>
+        </div>
+      </section>
+
+       <!-- Result  -->
+      <section id="result-section" class="hidden" data-animate>
+        <h2 class="section-title success">Complete!</h2>
+        <div id="result-link" class="result-card"></div>
+      </section>
     </div>
-    <script src="/static/script.js"></script>
+  </main>
+
+  <script src="/static/script.js" defer></script>
 </body>
 </html>
