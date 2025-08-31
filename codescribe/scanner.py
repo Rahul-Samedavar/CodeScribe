@@ -1,16 +1,16 @@
-
+"""This module provides functions for scanning a project directory and cloning a repository from a URL."""
 import os
 import re
 from pathlib import Path
-from typing import List, Callable # Add Callable
+from typing import List, Callable
 import git
 import tempfile
 import shutil
 
-# ... is_excluded function is unchanged ...
 def is_excluded(path: Path, exclude_patterns: List[str], project_root: Path) -> bool:
+    """Determines if a path is excluded based on a list of patterns and the project root."""
     relative_path_str = path.relative_to(project_root).as_posix()
-    if any(part.startswith('.') for part in path.relative_to(project_root).parts):
+    if any((part.startswith('.') for part in path.relative_to(project_root).parts)):
         return True
     for pattern in exclude_patterns:
         try:
@@ -21,8 +21,8 @@ def is_excluded(path: Path, exclude_patterns: List[str], project_root: Path) -> 
                 return True
     return False
 
-# ... scan_project function is unchanged ...
 def scan_project(project_path: Path, exclude_patterns: List[str]) -> List[Path]:
+    """Scans a project directory and returns a list of Python files."""
     py_files = []
     for root, dirs, files in os.walk(project_path, topdown=True):
         root_path = Path(root)
@@ -35,23 +35,19 @@ def scan_project(project_path: Path, exclude_patterns: List[str]) -> List[Path]:
                     py_files.append(file_path)
     return py_files
 
-def get_project_path(path_or_url: str, log_callback: Callable[[str], None] = print) -> Path:
-    """
-    Clones a repo if a URL is given, otherwise returns the Path object.
-    Uses a callback for logging.
-    """
-    if path_or_url.startswith("http") or path_or_url.startswith("git@"):
+def get_project_path(path_or_url: str, log_callback: Callable[[str], None]=print) -> Path:
+    """Clones a repo if a URL is given, otherwise returns the Path object. Uses a callback for logging."""
+    if path_or_url.startswith('http') or path_or_url.startswith('git@'):
         temp_dir = tempfile.mkdtemp()
-        # Use the callback instead of print
-        log_callback(f"Cloning repository {path_or_url} into temporary directory...")
+        log_callback(f'Cloning repository {path_or_url} into temporary directory...')
         try:
             git.Repo.clone_from(path_or_url, temp_dir)
             return Path(temp_dir)
         except Exception as e:
             shutil.rmtree(temp_dir)
-            raise RuntimeError(f"Failed to clone repository: {e}")
+            raise RuntimeError(f'Failed to clone repository: {e}')
     else:
         path = Path(path_or_url)
         if not path.is_dir():
-            raise FileNotFoundError(f"The specified path does not exist or is not a directory: {path}")
+            raise FileNotFoundError(f'The specified path does not exist or is not a directory: {path}')
         return path
