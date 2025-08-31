@@ -1,4 +1,3 @@
-# START OF FILE main.py
 
 import os
 import tempfile
@@ -32,7 +31,7 @@ origins = [
     "http://localhost",
     "http://localhost:8000",
     "http://127.0.0.1",
-    "http://127.0.0.1:8000",
+    "http://12_7.0.0.1:8000",
 ]
 
 app.add_middleware(
@@ -45,7 +44,6 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ... (all GET endpoints remain the same, no changes needed there) ...
 @app.get("/")
 async def read_root():
     return FileResponse('static/index.html')
@@ -182,13 +180,16 @@ async def process_zip_endpoint(
     with zipfile.ZipFile(zip_location, 'r') as zip_ref:
         zip_ref.extractall(project_path)
     os.remove(zip_location)
-    
+
     stream_headers = {
         "Content-Type": "text/plain",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
+
+    # Create a placeholder repo name from the zip filename for the orchestrator
+    placeholder_repo_name = f"zip-upload/{Path(zip_file.filename).stem}"
 
     return StreamingResponse(
         process_project(
@@ -197,6 +198,7 @@ async def process_zip_endpoint(
             readme_note=readme_note,
             is_temp=True,
             exclude_list=exclude_list,
+            repo_full_name=placeholder_repo_name,
         ),
         headers=stream_headers,
         media_type="text/plain"
@@ -239,7 +241,7 @@ async def process_github_endpoint(request: Request,
     temp_dir = tempfile.mkdtemp(prefix="codescribe-git-")
     project_path = Path(temp_dir)
     repo_url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
-    
+
     Repo.clone_from(repo_url, project_path, branch=base_branch)
 
     stream_headers = {
