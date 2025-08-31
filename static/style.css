@@ -1,0 +1,273 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f4f7f9;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background: #fff;
+    padding: 2rem 3rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 700px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+header p {
+    color: #7f8c8d;
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #34495e;
+}
+
+input[type="text"],
+input[type="file"],
+select,
+textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+textarea {
+    resize: vertical;
+}
+
+button, .button-link {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+button:hover, .button-link:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
+
+.input-selection {
+    display: flex;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 0.8rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #7f8c8d;
+    border-bottom: 3px solid transparent;
+}
+
+.tab-btn.active {
+    color: #3498db;
+    border-bottom: 3px solid #3498db;
+    font-weight: 600;
+}
+
+/* Remove old #progress-section and #log-output styles and add these */
+
+#live-progress-view {
+    margin-top: 2rem;
+    text-align: left;
+}
+
+.progress-container {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.phase-list {
+    flex: 1;
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.phase-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.phase-item .status-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 1rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    position: relative;
+}
+
+.phase-item[data-status="pending"] .status-icon {
+    background-color: #ced4da;
+}
+.phase-item[data-status="in-progress"] .status-icon {
+    background-color: #4dabf7;
+    animation: spin 1.2s linear infinite;
+}
+.phase-item[data-status="success"] .status-icon {
+    background-color: #20c997;
+}
+.phase-item[data-status="error"] .status-icon {
+    background-color: #fa5252;
+}
+
+/* Icons using pseudo-elements */
+.phase-item[data-status="success"] .status-icon::after {
+    content: '✓'; color: white; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+.phase-item[data-status="error"] .status-icon::after {
+    content: '✗'; color: white; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.phase-details {
+    flex-grow: 1;
+}
+
+.phase-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #343a40;
+}
+
+.subtask-list {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+.subtask-list li {
+    margin-bottom: 0.25rem;
+    opacity: 0.7;
+}
+.subtask-list li[data-status="in-progress"] {
+    opacity: 1;
+    font-weight: 500;
+}
+.subtask-list li[data-status="success"] {
+    opacity: 1;
+    text-decoration: line-through;
+    color: #868e96;
+}
+.subtask-list li[data-status="error"] {
+    opacity: 1;
+    color: #fa5252;
+    font-weight: 500;
+}
+
+
+#raw-log-container {
+    flex: 1;
+    background-color: #212529;
+    color: #e9ecef;
+    border-radius: 6px;
+    padding: 1rem;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.85rem;
+}
+#raw-log-container h4 {
+    margin-top: 0;
+    color: #adb5bd;
+    border-bottom: 1px solid #495057;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+#log-output {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#result-section {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background-color: #e8f6f3;
+    border: 1px solid #1abc9c;
+    border-radius: 6px;
+}
+
+/* Add to the end of the file */
+#file-tree-container {
+    text-align: left;
+}
+
+#file-tree {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#file-tree ul {
+    list-style-type: none;
+    padding-left: 1.5rem;
+}
+
+#file-tree label {
+    font-weight: normal;
+    display: inline-block;
+    margin-bottom: 0.2rem;
+}

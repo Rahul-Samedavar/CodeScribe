@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeScribe AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>CodeScribe AI 🤖</h1>
+            <p>AI-powered project documentation, now in your browser.</p>
+        </header>
+
+        <div id="auth-section">
+            <button id="github-login-btn">Login with GitHub</button>
+        </div>
+
+        <div id="main-content" class="hidden">
+            <div class="input-selection">
+                <button id="select-zip-btn" class="tab-btn active">Upload Zip</button>
+                <button id="select-github-btn" class="tab-btn">Use GitHub Repo</button>
+            </div>
+
+            <form id="doc-form">
+                <!-- GitHub Input Section -->
+                <div id="github-inputs">
+                    <div class="form-group">
+                        <label for="repo-select">Select a Repository:</label>
+                        <select id="repo-select" name="repo_full_name" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="base-branch-input">Base Branch:</label>
+                        <input type="text" id="base-branch-input" name="base_branch" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-branch-input">New Branch Name:</label>
+                        <input type="text" id="new-branch-input" name="new_branch_name" value="docs/codescribe-ai" required>
+                    </div>
+                </div>
+
+                <!-- ZIP Input Section -->
+                <div id="zip-inputs" class="hidden">
+                    <div class="form-group">
+                        <label for="zip-file">Upload Project as .zip:</label>
+                        <input type="file" id="zip-file" name="zip_file" accept=".zip" required>
+                    </div>
+                </div>
+                
+                <hr>
+
+                <!-- Common Inputs -->
+                <div class="form-group">
+                    <label for="description">Short Project Description:</label>
+                    <textarea id="description" name="description" rows="3" required placeholder="e.g., A Python library for advanced data analysis and visualization."></textarea>
+                </div>
+                 <div class="form-group">
+                    <label for="readme-note">Note for README (Optional):</label>
+                    <textarea id="readme-note" name="readme_note" rows="2" placeholder="e.g., Emphasize the new data processing pipeline. Mention the v2.0 release."></textarea>
+                </div>
+
+                <hr>
+                
+                <div class="form-group">
+                    <label for="exclude-patterns">Exclude (Regex Patterns):</label>
+                    <textarea id="exclude-patterns" name="exclude_patterns" rows="2" placeholder="e.g., tests/.*, .*/migrations/.*, specific_file.py"></textarea>
+                    <small>One regex pattern per line. Matches relative paths like 'src/utils/helpers.py'.</small>
+                </div>
+                
+                <!-- This will be populated by JS for GitHub repos -->
+                <div id="file-tree-container" class="form-group hidden">
+                    <label>Exclude Specific Files/Folders:</label>
+                    <div id="file-tree"></div>
+                </div>
+                
+                <button type="submit" id="submit-btn">Generate Documentation</button>
+            </form>
+        </div>
+        
+        <div id="live-progress-view" class="hidden">
+            <h2>Processing Your Project...</h2>
+            <div class="progress-container">
+                <!-- Main Phases Column -->
+                <ul id="phase-list" class="phase-list">
+                    <li id="phase-scan" class="phase-item" data-status="pending">
+                        <span class="status-icon"></span>
+                        <div class="phase-details">
+                            <span class="phase-title">1. Scan Project Files</span>
+                            <ul class="subtask-list" id="scan-file-list"></ul>
+                        </div>
+                    </li>
+                    <li id="phase-docstrings" class="phase-item" data-status="pending">
+                        <span class="status-icon"></span>
+                        <div class="phase-details">
+                            <span class="phase-title">2. Generate Docstrings</span>
+                            <ul class="subtask-list" id="docstring-file-list"></ul>
+                        </div>
+                    </li>
+                    <li id="phase-readmes" class="phase-item" data-status="pending">
+                        <span class="status-icon"></span>
+                        <div class="phase-details">
+                            <span class="phase-title">3. Generate READMEs</span>
+                            <ul class="subtask-list" id="readme-dir-list"></ul>
+                        </div>
+                    </li>
+                    <li id="phase-output" class="phase-item" data-status="pending">
+                        <span class="status-icon"></span>
+                        <div class="phase-details">
+                            <span class="phase-title">4. Finalize and Push</span>
+                            <ul class="subtask-list" id="output-step-list"></ul>
+                        </div>
+                    </li>
+                </ul>
+                <!-- Raw Log Column -->
+                <div id="raw-log-container">
+                    <h4>Live Log Details</h4>
+                    <pre id="log-output"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="result-section" class="hidden">
+            <h2>Complete!</h2>
+            <div id="result-link"></div>
+        </div>
+
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>

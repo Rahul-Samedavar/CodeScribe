@@ -1,0 +1,16 @@
+# Existing
+click
+python-dotenv
+google-generativeai
+groq
+networkx
+GitPython
+
+# New for Web Server
+fastapi
+uvicorn[standard]
+python-multipart
+aiohttp
+sse-starlette
+PyGithub
+requests
