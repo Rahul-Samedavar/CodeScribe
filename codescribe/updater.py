@@ -1,8 +1,14 @@
+
 import ast
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Callable
+
+# Helper no-op function for default callback
+def _no_op_log(message: str):
+    pass
 
 class DocstringInserter(ast.NodeTransformer):
+    # ... (class content remains unchanged) ...
     def __init__(self, docstrings: Dict[str, str]):
         self.docstrings = docstrings
         self.current_class = None
@@ -28,8 +34,12 @@ class DocstringInserter(ast.NodeTransformer):
         else:
             node.body.insert(0, docstring_node) # Insert new one
 
-def update_file_with_docstrings(file_path: Path, docstrings: Dict[str, str]):
-    """Parses a Python file, inserts docstrings, and overwrites the file."""
+
+def update_file_with_docstrings(file_path: Path, docstrings: Dict[str, str], log_callback: Callable[[str], None] = print):
+    """
+    Parses a Python file, inserts docstrings, and overwrites the file.
+    Uses a callback for logging. Defaults to print for CLI compatibility.
+    """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             source_code = f.read()
@@ -43,7 +53,9 @@ def update_file_with_docstrings(file_path: Path, docstrings: Dict[str, str]):
         
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_source_code)
-        print(f"Successfully updated {file_path} with new docstrings.")
+        # Use the callback instead of print
+        log_callback(f"Successfully updated {file_path.name} with new docstrings.")
 
     except Exception as e:
-        print(f"Error updating file {file_path}: {e}")
+        # Use the callback for errors too
+        log_callback(f"Error updating file {file_path.name}: {e}")

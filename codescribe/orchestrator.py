@@ -1,4 +1,4 @@
-# codescribe/orchestrator.py
+# START OF FILE orchestrator.py
 
 import shutil
 from pathlib import Path
@@ -35,13 +35,10 @@ INSTRUCTIONS:
 Provide a JSON object where keys are the function or class names (e.g., "my_function", "MyClass", "MyClass.my_method") and values are their complete docstrings. Do NOT include the code itself in your response.
 """
 
-
-# Helper no-op function for default callback
 def no_op_callback(event: str, data: dict):
     print(f"{event}: {json.dumps(data, indent=2)}")
 
 class DocstringOrchestrator:
-    # Add 'progress_callback' to __init__
     def __init__(self, path_or_url: str, description: str, exclude: List[str], llm_handler: LLMHandler, progress_callback: Callable[[str, dict], None] = no_op_callback):
         self.path_or_url = path_or_url
         self.description = description
@@ -51,27 +48,27 @@ class DocstringOrchestrator:
         self.project_path = None
         self.is_temp_dir = path_or_url.startswith("http")
         
-        # --- NEW: Bridge the LLM Handler's simple log callback to our structured event callback ---
-        # This ensures messages like "Rate limit hit..." are sent to the frontend.
         def llm_log_wrapper(message: str):
             self.progress_callback("log", {"message": message})
         
         self.llm_handler.progress_callback = llm_log_wrapper
-        # --- END NEW ---
 
     def run(self):
+        # --- NEW: Define a simple logger that uses our event system ---
+        def log_to_ui(message: str):
+            self.progress_callback("log", {"message": message})
+
         try:
-            # Use the callback instead of print()]
-            self.project_path = scanner.get_project_path(self.path_or_url)
-            
+            # Pass the logger to scanner
+            self.project_path = scanner.get_project_path(self.path_or_url, log_callback=log_to_ui)
             
             self.progress_callback("phase", {"id": "scan", "name": "Scanning Project", "status": "in-progress"})
             files = scanner.scan_project(self.project_path, self.exclude)
-            self.progress_callback("log", {"message": f"Found {len(files)} Python files to document."})
+            log_to_ui(f"Found {len(files)} Python files to document.") # Use our logger here too
             self.progress_callback("phase", {"id": "scan", "status": "success"})
 
-            graph = parser.build_dependency_graph(files, self.project_path)
-            
+            # Pass the logger to parser
+            graph = parser.build_dependency_graph(files, self.project_path, log_callback=log_to_ui)
             
             self.progress_callback("phase", {"id": "docstrings", "name": "Generating Docstrings", "status": "in-progress"})
             if not nx.is_directed_acyclic_graph(graph):
@@ -81,17 +78,16 @@ class DocstringOrchestrator:
             
             documented_context = {}
             for file_path in doc_order:
-                
                 rel_path = file_path.relative_to(self.project_path).as_posix()
-                # MODIFIED: Added 'listId' to the subtask payload.
                 self.progress_callback("subtask", {
                     "parentId": "docstrings", 
-                    "listId": "docstring-file-list", # This tells the JS where to put the item
+                    "listId": "docstring-file-list",
                     "id": rel_path, 
                     "name": rel_path, 
                     "status": "in-progress"
                 })
                 
+                # ... (dependency context logic is unchanged) ...
                 deps = graph.predecessors(file_path)
                 dep_context_str = ""
                 for dep in deps:
@@ -116,9 +112,9 @@ class DocstringOrchestrator:
                 try:
                     generated_docs = self.llm_handler.generate_documentation(prompt)
                     
-                    updater.update_file_with_docstrings(file_path, generated_docs)
+                    # Pass the logger to the updater function
+                    updater.update_file_with_docstrings(file_path, generated_docs, log_callback=log_to_ui)
                     
-                    # MODIFIED: Added 'listId' here as well for consistency.
                     self.progress_callback("subtask", {
                         "parentId": "docstrings", 
                         "listId": "docstring-file-list",
@@ -128,8 +124,7 @@ class DocstringOrchestrator:
                     documented_context[file_path] = generated_docs
                     
                 except Exception as e:
-                    self.progress_callback("log", {"message": f"Error on {rel_path}: {e}"})
-                    # MODIFIED: Added 'listId' here for error state.
+                    log_to_ui(f"Error processing {rel_path}: {e}") # Use logger
                     self.progress_callback("subtask", {
                         "parentId": "docstrings",
                         "listId": "docstring-file-list",

@@ -1,10 +1,11 @@
+
 import ast
 from pathlib import Path
-from typing import List, Set
+from typing import List, Set, Callable # Add Callable
 import networkx as nx
 
 def resolve_import_path(current_file: Path, module_name: str, level: int, project_root: Path) -> Path | None:
-    """Resolves an import statement to a file path within the project."""
+    # ... (function content remains unchanged) ...
     if level > 0:  # Relative import
         base_path = current_file.parent
         for _ in range(level - 1):
@@ -22,8 +23,11 @@ def resolve_import_path(current_file: Path, module_name: str, level: int, projec
     
     return None
 
-def build_dependency_graph(file_paths: List[Path], project_root: Path) -> nx.DiGraph:
-    """Builds a dependency graph from a list of Python files."""
+def build_dependency_graph(file_paths: List[Path], project_root: Path, log_callback: Callable[[str], None] = print) -> nx.DiGraph:
+    """
+    Builds a dependency graph from a list of Python files.
+    Uses a callback for logging warnings.
+    """
     graph = nx.DiGraph()
     path_map = {p.stem: p for p in file_paths} # Simplified mapping
     
@@ -42,6 +46,7 @@ def build_dependency_graph(file_paths: List[Path], project_root: Path) -> nx.DiG
                             graph.add_edge(file_path, dep_path)
 
         except Exception as e:
-            print(f"Warning: Could not parse {file_path}. Skipping. Error: {e}")
+            # Use the callback instead of print
+            log_callback(f"Warning: Could not parse {file_path.name} for dependencies. Skipping. Error: {e}")
             
     return graph
