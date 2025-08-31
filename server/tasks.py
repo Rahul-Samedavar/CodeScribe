@@ -16,9 +16,6 @@ from codescribe.llm_handler import LLMHandler
 from codescribe.orchestrator import DocstringOrchestrator
 from codescribe.readme_generator import ReadmeGenerator
 
-# REMOVED the old SSE-specific formatting function.
-# The new formatting is done directly in the generator.
-
 async def process_project(
     project_path: Path,
     description: str,
@@ -42,7 +39,6 @@ async def process_project(
         try:
             # --- Setup ---
             config = load_config()
-            # The LLM Handler will log directly to the frontend via this callback
             llm_handler = LLMHandler(config.api_keys, progress_callback=lambda msg: emit_event("log", {"message": msg}))
 
             # --- 1. Docstrings Phase (using the orchestrator) ---
@@ -51,11 +47,11 @@ async def process_project(
                 description=description,
                 exclude=exclude_list,
                 llm_handler=llm_handler,
-                progress_callback=emit_event  # Pass the emit_event function directly
+                progress_callback=emit_event,
+                repo_full_name=repo_full_name  # <<< THIS IS THE FIX
             )
-            # We need to set the project path since it's already cloned/unzipped
             doc_orchestrator.project_path = project_path
-            doc_orchestrator.is_temp_dir = False # Prevent double-deletion of the directory
+            doc_orchestrator.is_temp_dir = False
             doc_orchestrator.run()
 
             # --- 2. READMEs Phase (using the generator) ---
@@ -75,11 +71,10 @@ async def process_project(
             # --- 3. Output Phase ---
             emit_event("phase", {"id": "output", "status": "in-progress"})
             if new_branch_name:
-                # --- Git Push Logic ---
+                # Git logic remains the same
                 emit_event("subtask", {"parentId": "output", "listId": "output-step-list", "id": "git-check", "name": "Checking for changes...", "status": "in-progress"})
                 repo = Repo(project_path)
                 
-                # Add untracked files (like new READMEs)
                 if repo.untracked_files:
                     repo.git.add(repo.untracked_files)
 
@@ -93,19 +88,16 @@ async def process_project(
                 emit_event("subtask", {"parentId": "output", "listId": "output-step-list", "id": "git-push", "name": f"Pushing to branch '{new_branch_name}'...", "status": "in-progress"})
                 
                 try:
-                    # Create and checkout the new branch
                     if new_branch_name in repo.heads:
                         repo.heads[new_branch_name].checkout()
                     else:
                         repo.create_head(new_branch_name).checkout()
 
-                    # Commit changes
                     repo.git.add(A=True)
                     repo.index.commit("docs: Add AI-generated documentation by CodeScribe")
                     
-                    # Push to the remote
                     origin = repo.remote(name='origin')
-                    origin.push(new_branch_name, force=True) # Use force to overwrite branch if it exists
+                    origin.push(new_branch_name, force=True)
                     
                     pr_url = f"https://github.com/{repo_full_name}/pull/new/{new_branch_name}"
                     emit_event("subtask", {"parentId": "output", "id": "git-push", "status": "success"})
@@ -114,17 +106,21 @@ async def process_project(
                 except GitCommandError as e:
                     emit_event("log", {"message": f"Git Error: {e}"})
                     raise RuntimeError(f"Failed to push to GitHub: {e}")
-
             else:
-                # --- ZIP Creation Logic ---
+                # ZIP logic remains the same
                 emit_event("subtask", {"parentId": "output", "listId": "output-step-list", "id": "zip-create", "name": "Creating downloadable ZIP file...", "status": "in-progress"})
                 
                 temp_dir = tempfile.gettempdir()
-                zip_filename_base = f"codescribe-docs-{Path(project_path).name}"
+                try:
+                    contained_dir = next(project_path.iterdir())
+                    project_name = contained_dir.name
+                except StopIteration:
+                    project_name = "documented-project"
+                
+                zip_filename_base = f"codescribe-docs-{project_name}"
                 zip_path_base = Path(temp_dir) / zip_filename_base
                 
                 zip_full_path = shutil.make_archive(str(zip_path_base), 'zip', project_path)
-                
                 zip_file_name = Path(zip_full_path).name
                 
                 emit_event("subtask", {"parentId": "output", "id": "zip-create", "status": "success"})
@@ -135,28 +131,16 @@ async def process_project(
         except Exception as e:
             emit_event("error", str(e))
         finally:
-            # Signal the async generator that we're done
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
-    # --- Async Runner ---
+    # Async runner remains the same
     main_task = loop.run_in_executor(None, _blocking_process)
-    
-    # --- THIS IS THE NEW STREAMING LOGIC ---
     while True:
         message = await queue.get()
-        if message is None: # The 'None' signal means the thread is finished
+        if message is None:
             break
-        
-        # Create a single JSON object with a 'type' (the old 'event') and a 'payload' (the old 'data')
-        json_line = json.dumps({
-            "type": message["event"],
-            "payload": message["data"]
-        })
-        
-        # Yield the JSON string followed by a newline. This is the ndjson format.
+        json_line = json.dumps({"type": message["event"], "payload": message["data"]})
         yield f"{json_line}\n"
-
     await main_task
-    
     if is_temp and project_path and project_path.exists():
         shutil.rmtree(project_path, ignore_errors=True)

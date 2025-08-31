@@ -1,3 +1,4 @@
+# codescribe/updater.py
 
 import ast
 from pathlib import Path
@@ -8,7 +9,6 @@ def _no_op_log(message: str):
     pass
 
 class DocstringInserter(ast.NodeTransformer):
-    # ... (class content remains unchanged) ...
     def __init__(self, docstrings: Dict[str, str]):
         self.docstrings = docstrings
         self.current_class = None
@@ -30,15 +30,13 @@ class DocstringInserter(ast.NodeTransformer):
     def _insert_docstring(self, node, docstring_text):
         docstring_node = ast.Expr(value=ast.Constant(value=docstring_text))
         if ast.get_docstring(node):
-            node.body[0] = docstring_node  # Replace existing docstring
+            node.body[0] = docstring_node
         else:
-            node.body.insert(0, docstring_node) # Insert new one
-
+            node.body.insert(0, docstring_node)
 
 def update_file_with_docstrings(file_path: Path, docstrings: Dict[str, str], log_callback: Callable[[str], None] = print):
     """
-    Parses a Python file, inserts docstrings, and overwrites the file.
-    Uses a callback for logging. Defaults to print for CLI compatibility.
+    Parses a Python file, inserts docstrings for functions/classes, and overwrites the file.
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -53,9 +51,38 @@ def update_file_with_docstrings(file_path: Path, docstrings: Dict[str, str], log
         
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_source_code)
-        # Use the callback instead of print
         log_callback(f"Successfully updated {file_path.name} with new docstrings.")
 
     except Exception as e:
-        # Use the callback for errors too
         log_callback(f"Error updating file {file_path.name}: {e}")
+
+def update_module_docstring(file_path: Path, docstring: str, log_callback: Callable[[str], None] = print):
+    """
+    Parses a Python file, adds or replaces the module-level docstring, and overwrites the file.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            source_code = f.read()
+        
+        tree = ast.parse(source_code)
+        
+        # Create the new docstring node
+        new_docstring_node = ast.Expr(value=ast.Constant(value=docstring))
+        
+        # Check if a module docstring already exists
+        if ast.get_docstring(tree):
+            # Replace the existing docstring node
+            tree.body[0] = new_docstring_node
+        else:
+            # Insert the new docstring node at the beginning
+            tree.body.insert(0, new_docstring_node)
+            
+        ast.fix_missing_locations(tree)
+        new_source_code = ast.unparse(tree)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(new_source_code)
+        log_callback(f"Successfully added/updated module docstring for {file_path.name}.")
+
+    except Exception as e:
+        log_callback(f"Error updating module docstring for {file_path.name}: {e}")

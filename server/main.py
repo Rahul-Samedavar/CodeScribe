@@ -8,16 +8,14 @@ from pathlib import Path
 import requests
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse # Import StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-# EventSourceResponse is no longer needed
-# from sse_starlette.sse import EventSourceResponse 
 
 from typing import List
 from git import Repo
 
-from github import Github, GithubException
+from github import Github, GithubException # Github is already imported
 
 from .tasks import process_project
 
@@ -47,8 +45,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ... (all GET endpoints remain the same) ...
-
+# ... (all GET endpoints remain the same, no changes needed there) ...
 @app.get("/")
 async def read_root():
     return FileResponse('static/index.html')
@@ -129,6 +126,7 @@ async def get_github_repo_tree(request: Request, repo_full_name: str, branch: st
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+
 @app.post("/process-zip")
 async def process_zip_endpoint(
     description: str = Form(...),
@@ -148,7 +146,7 @@ async def process_zip_endpoint(
     os.remove(zip_location)
     
     stream_headers = {
-        "Content-Type": "text/plain", # Changed from event-stream
+        "Content-Type": "text/plain",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
@@ -181,6 +179,22 @@ async def process_github_endpoint(request: Request,
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = auth_header.split(" ")[1]
 
+    # --- NEW: Branch Existence Check ---
+    try:
+        g = Github(token)
+        repo = g.get_repo(repo_full_name)
+        existing_branches = [b.name for b in repo.get_branches()]
+        if new_branch_name in existing_branches:
+            raise HTTPException(
+                status_code=409, # 409 Conflict is appropriate here
+                detail=f"Branch '{new_branch_name}' already exists. Please use a different name."
+            )
+    except GithubException as e:
+        raise HTTPException(status_code=404, detail=f"Repository '{repo_full_name}' not found or token lacks permissions: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred while checking branches: {e}")
+    # --- END of new check ---
+
     regex_list = [p.strip() for p in exclude_patterns.splitlines() if p.strip()]
     exclude_list = regex_list + exclude_paths
 
@@ -191,7 +205,7 @@ async def process_github_endpoint(request: Request,
     Repo.clone_from(repo_url, project_path, branch=base_branch)
 
     stream_headers = {
-        "Content-Type": "text/plain", # Changed from event-stream
+        "Content-Type": "text/plain",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",

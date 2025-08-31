@@ -128,7 +128,6 @@ class ReadmeGenerator:
     def __init__(self, path_or_url: str, description: str, exclude: List[str], llm_handler: LLMHandler, user_note: str = "", repo_full_name="", progress_callback: Callable[[str, dict], None] = no_op_callback):
         self.path_or_url = path_or_url
         self.description = description
-        # Also exclude README.md from being summarized as a file
         self.exclude = exclude + ["README.md"]
         self.llm_handler = llm_handler
         self.user_note = user_note
@@ -137,10 +136,8 @@ class ReadmeGenerator:
         self.is_temp_dir = path_or_url.startswith("http")
         self.repo_full_name  = repo_full_name
         
-        # --- NEW: Bridge the LLM Handler's logging just like in the orchestrator ---
         def llm_log_wrapper(message: str):
             self.progress_callback("log", {"message": message})
-        
         
         self.llm_handler.progress_callback = llm_log_wrapper
 
@@ -154,23 +151,40 @@ class ReadmeGenerator:
         except Exception as e:
             self.progress_callback("log", {"message": f"An unexpected error occurred in README generation: {e}"})
             self.progress_callback("phase", {"id": "readmes", "status": "error"})
-            raise # Re-raise the exception to be caught by the main handler
+            raise
         finally:
             if self.is_temp_dir and self.project_path and self.project_path.exists():
                 shutil.rmtree(self.project_path, ignore_errors=True)
 
     def _summarize_py_file(self, file_path: Path) -> str:
-        """Extracts the module-level docstring or a placeholder for a Python file."""
+        """
+        Extracts the module-level docstring, or a list of function/class names
+        as a fallback, to summarize a Python file.
+        """
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
             tree = ast.parse(content)
+            
+            # 1. Prioritize the module-level docstring
             docstring = ast.get_docstring(tree)
             if docstring:
-                # Return just the first line for brevity in the prompt
                 return f"`{file_path.name}`: {docstring.strip().splitlines()[0]}"
+
+            # 2. Fallback: Find function and class names
+            definitions = []
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    definitions.append(node.name)
+            
+            if definitions:
+                summary = f"Contains definitions for: `{', '.join(definitions)}`."
+                return f"`{file_path.name}`: {summary}"
+
         except Exception as e:
-            self.progress_callback("log", {"message": f"Could not parse docstring from {file_path.name}: {e}"})
+            self.progress_callback("log", {"message": f"Could not parse {file_path.name} for summary: {e}"})
+        
+        # 3. Final fallback
         return f"`{file_path.name}`: A Python source file."
 
     def run_with_structured_logging(self):
@@ -178,14 +192,12 @@ class ReadmeGenerator:
         Generates README files for each directory from the bottom up,
         emitting structured events for the UI.
         """
-        # Note: The 'run' method from before is now integrated here with structured callbacks.
         if not self.project_path:
              self.project_path = scanner.get_project_path(self.path_or_url)
              
         for dir_path, subdir_names, file_names in os.walk(self.project_path, topdown=False):
             current_dir = Path(dir_path)
             
-            # Skip excluded directories
             if scanner.is_excluded(current_dir, self.exclude, self.project_path):
                 continue
 
@@ -196,25 +208,18 @@ class ReadmeGenerator:
             self.progress_callback("subtask", {"parentId": "readmes", "listId": "readme-dir-list", "id": dir_id, "name": f"Directory: {dir_name_display}", "status": "in-progress"})
             
             try:
-                # 1. Gather context from files in the current directory
                 file_summaries = self._gather_file_summaries(current_dir, file_names)
-                # 2. Gather context from subdirectories' READMEs (which are now generated)
                 subdirectory_readmes = self._gather_subdirectory_readmes(current_dir, subdir_names)
 
-                # 3. Check for an existing README to update
                 existing_readme_content = None
                 existing_readme_path = current_dir / "README.md"
                 if existing_readme_path.exists():
                     with open(existing_readme_path, "r", encoding="utf-8") as f:
                         existing_readme_content = f.read()
 
-                # 4. Build the prompt
                 prompt = self._build_prompt(current_dir, file_summaries, subdirectory_readmes, existing_readme_content)
-
-                # 5. Generate README content via LLM
                 generated_content = self.llm_handler.generate_text_response(prompt)
                 
-                # 6. Write the README.md file
                 with open(current_dir / "README.md", "w", encoding="utf-8") as f:
                     f.write(generated_content)
                 
@@ -224,7 +229,7 @@ class ReadmeGenerator:
                 self.progress_callback("log", {"message": f"Failed to generate README for {dir_name_display}: {e}"})
                 self.progress_callback("subtask", {"parentId": "readmes", "id": dir_id, "status": "error"})
 
-
+    # ... The rest of the file (_gather_file_summaries, _gather_subdirectory_readmes, _build_prompt) remains unchanged ...
     def _gather_file_summaries(self, current_dir: Path, file_names: List[str]) -> str:
         file_summaries_list = []
         for fname in file_names:
